@@ -4,13 +4,14 @@ const { Builder, By, until } = require('selenium-webdriver')
 const browserstack = require('browserstack-local')
 
 describe('Incognito vs non-incognito mode', function () {
-  this.timeout(300000)
+  this.timeout(60000)
 
   const URL = 'http://localhost:8080'
   const ID_ELEM_XPATH = '//div[text()="Visitor identifier:"]/following-sibling::pre[1]'
 
   var driverBuilder
-  var driver
+  var driver1
+  var driver2
   var bs_local
 
   before(function (done) {
@@ -29,8 +30,11 @@ describe('Incognito vs non-incognito mode', function () {
   })
 
   afterEach(function () {
-    if (driver) {
-      driver.quit()
+    if (driver1) {
+      driver1.quit()
+    }
+    if (driver2) {
+      driver2.quit()
     }
   })
 
@@ -61,23 +65,29 @@ describe('Incognito vs non-incognito mode', function () {
         accessKey: process.env['BROWSERSTACK_ACCESS_KEY'],
       }
 
-      // Run in incognito mode
-      driver = driverBuilder.withCapabilities(capabilities).build()
-      await driver.get(URL)
-      let idElem = await driver.wait(until.elementLocated(By.xpath(ID_ELEM_XPATH)), 10000)
-      let id = await idElem.getText()
-      expect(id).to.be.not.empty
-      driver.quit()
-
-      // Run in non-incognito mode
-      capabilities['bstack:options'].sessionName = 'Non-incognito'
-      for (const key in capabilities) {
-        if (key.endsWith('Options')) delete capabilities[key]
+      async function getIdInPrivate() {
+        driver1 = driverBuilder.withCapabilities(capabilities).build()
+        await driver1.get(URL)
+        let idElem = await driver1.wait(until.elementLocated(By.xpath(ID_ELEM_XPATH)), 10000)
+        return idElem.getText()
       }
-      driver = driverBuilder.withCapabilities(capabilities).build()
-      await driver.get(URL)
-      idElem = await driver.wait(until.elementLocated(By.xpath(ID_ELEM_XPATH)), 10000)
-      expect(await idElem.getText()).to.be.not.empty
+
+      async function getIdInNonIncognito() {
+        capabilities['bstack:options'].sessionName = 'Non-incognito'
+        for (const key in capabilities) {
+          if (key.endsWith('Options')) delete capabilities[key]
+        }
+        driver2 = driverBuilder.withCapabilities(capabilities).build()
+        await driver2.get(URL)
+        let idElem = await driver2.wait(until.elementLocated(By.xpath(ID_ELEM_XPATH)), 10000)
+        return idElem.getText()
+      }
+
+      return Promise.all([getIdInPrivate(), getIdInNonIncognito()]).then((ids) => {
+        console.log(ids)
+        expect(ids[0]).to.eq(ids[1])
+        expect(ids[0]).to.have.length(32)
+      })
     })
   })
 })
